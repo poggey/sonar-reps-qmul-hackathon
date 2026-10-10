@@ -2,6 +2,8 @@
 
 Your phone already has a sonar. Sonar Reps plays near-ultrasonic tones (18.5 to 19.7 kHz) from the iPhone speaker and listens for the echo off your chest. The phase of that echo follows your chest as it moves, so the phone counts push-ups and reads their depth with no camera, no wearable and no special hardware. Built at the QMUL AI Hackathon (Invisible AI), October 2026.
 
+**Demo video:** [youtube.com/watch?v=PdGd_M7TYp4](https://www.youtube.com/watch?v=PdGd_M7TYp4)
+
 ## At a glance
 
 Put your phone on the floor and train. It counts your push-ups and refuses half reps, using sound you cannot hear.
@@ -53,7 +55,8 @@ python probe_live.py                     # live tracking on the laptop
 python phone_receiver.py                 # live tracking from the iPhone
 python analyze_wav.py take.wav --plot take.png
 python takes.py                          # replay the real recordings in takes/
-python judge.py                          # train a rep judge on the labelled takes and test it against the fixed line
+python judge.py                          # train the rep judge on the labelled takes, test it on unseen ones
+python presentation/make_charts.py       # redraw the charts in presentation/img
 ```
 
 iPhone: `cd ios && xcodegen generate`, open the project and run on a phone. The Mac's IP is a developer setting: open Settings (the gear), tap Version five times, and enter it under Developer (default 172.20.10.11). Then press Start set. The Mac sends its verdict back and the phone shows the count. If the university Wi-Fi blocks the stream, turn on the iPhone's Personal Hotspot and join it from the Mac.
@@ -92,53 +95,53 @@ Rules the design follows, because breaking them breaks the counting:
 
 ## Evaluation
 
-Labelled sets recorded on an iPhone 16 Pro Max (10 Oct, 11:22 and 13:19 to 13:27), one person, one room. Counted by replaying the stored takes (`python takes.py`) with the settings that ship: rep line 12 cm.
+Labelled sets recorded on an iPhone 16 Pro Max (10 Oct, 11:22 and 13:19 to 13:27), one person, one room. Each set is judged by the rep judge trained on the other sets only, so it has not seen the set it is judging (`python judge.py`).
 
-| Set | Should count | Counted | Refused | |
-|---|---|---|---|---|
-| 10 full push-ups (11:22) | 10 | 10 | 1 | the refused one is getting into position |
-| 10 full push-ups, normal pace | 10 | 10 | 0 | |
-| 10 full push-ups, fast (0.9 s each) | 10 | 10 | 0 | |
-| 5 deep push-ups, chest touching down | 5 | 5 | 0 | |
-| 5 full and 5 half, alternating | 5 | 3 | 7 | all 5 half reps refused; 2 full reps read 8.6 and 7.7 cm and were refused too |
-| 10 half reps | 0 | 0 | 10 | blocked |
-| Phone picked up, slid and shaken | 0 | 0 | 5 | blocked; live, the motion sensor also stopped all counting |
-| Empty floor, people walking nearby, 30 s | 0 | 1 | 0 | one false rep in the first 5 s, none after |
-| Hand waved over the phone 10 times | 0 | 10 | 0 | **not blocked** |
-| 10 kneeling push-ups | 0 | 9 | 1 | **not blocked** |
+| Set | Should count | Counted | |
+|---|---|---|---|
+| 10 full push-ups (11:22) | 10 | 10 | getting into position refused |
+| 10 full push-ups, normal pace | 10 | 10 | |
+| 10 full push-ups, fast (0.9 s each) | 10 | 10 | |
+| 5 deep push-ups, chest touching down | 5 | 5 | |
+| 5 full and 5 half, alternating | 5 | 4 | all 5 half reps refused; 1 full rep refused |
+| 10 half reps | 0 | 0 | blocked |
+| Phone picked up, slid and shaken | 0 | 0 | blocked; live, the motion sensor also stopped all counting |
+| Empty floor, people walking nearby, 30 s | 0 | 1 | one false rep in the first 5 s, none after |
+| Hand waved over the phone 10 times | 0 | 8 | **not blocked** |
+| 10 kneeling push-ups | 0 | 9 | **not blocked** |
 
-In short: 38 of 40 full push-ups counted, 15 of 15 half reps refused, phone shaking blocked. A hand moved up and down over the phone counts as a rep, and so does a kneeling push-up: the sonar sees one surface moving, not whose it is or where the knees are.
+In short: 39 of 40 full push-ups counted, 15 of 15 half reps refused, phone shaking blocked. A hand moved up and down over the phone counts as a rep, and so does a kneeling push-up: the sonar sees one surface moving, not whose it is or where the knees are.
 
-Limits of this table: one person, one phone, one afternoon. Two earlier sets whose true counts were never confirmed read shallower (9 to 17 cm) and would lose reps at this line: 9 of 13 and 9 of 10 cycles counted.
+Limits of this table: one person, one phone, one afternoon. Two earlier sets whose true counts were never confirmed read shallower and are not in it.
 
-**The rep line is fitted, not hand-picked.** Any line from 11.5 to 13.5 cm sorts the same 53 of 55 full and half reps correctly. Fitted on all takes but one and tested on the one left out, it also gets 53 of 55.
+### The rep judge
 
-**A trained model did not beat it.** `judge.py` describes each movement with 7 numbers (depth, time down and up, peak speed each way, echo strength, phase steadiness) and trains a small classifier. Tested the same way, on takes it had not seen:
+`judge.py` finds every down and up, measures it on the way down and on the way back up, and a small trained model (logistic regression, plain numpy, `judge.json`) says full rep or half rep. It judges on two numbers: the larger of the two strokes, and how steadily the echo's phase turned. `phone_receiver.py` uses it by default.
 
-| | Right |
+Trained on 55 labelled movements (40 full, 15 half). Tested on sets it had not seen:
+
+| | Full and half reps judged right |
 |---|---|
-| One depth line | 53 of 55 full and half reps |
-| Model, full against half | 51 of 55 |
-| Model, full, half or not a push-up | 21 of 72 movements |
+| Rep judge | 54 of 55 |
+| One fixed depth line, fitted the same way | 53 of 55 |
 
-So the line is what runs. The three-way model fails because a hand wave looks like a push-up on every one of those numbers. Telling them apart needs the distance to the moving surface, which steady tones do not give.
+Why both strokes: the way down sometimes reads short (one full rep read 8.6 cm down and 16.2 cm back up), and after a pause at the bottom the way up does. The larger of the two is usually right.
+
+What to hold against these figures:
+
+- The two inputs were chosen by scoring feature sets on this same test, so 54 of 55 is somewhat optimistic. The other sets scored 52 to 54.
+- A first version with seven inputs and a third verdict, "not a push-up", got 21 of 72: a hand wave gives the same numbers as a push-up, so it cannot be learned from them. Hand waves are tested but not trained on. Telling a hand from a chest needs the distance to the moving surface, which steady tones do not give.
+- 55 movements from one person is a small set.
 
 **Depth.** In the deep set the chest went from arms locked (about 30 cm up by Addy's estimate) down to touching, and the sonar read 17.3 to 24.2 cm. So depth is in the right range and probably reads short. It is good enough to sort full from half reps, not to quote in centimetres.
 
-**Update: the judge now runs in the product.** It was reworked to measure the way back up as well as the way down and to judge on the larger stroke and the steadiness of the echo. Tested the same way, on takes it had not seen (`python judge.py`):
+**Volume matters.** With the phone volume turned down the tones were 10 times weaker and a set of 10 read as noise. The receiver now refuses to count and says so, on the laptop and on the phone, when the tones are too quiet.
 
-| | Right |
-|---|---|
-| One depth line | 53 of 55 full and half reps |
-| Rep judge, full against half | **54 of 55** |
-
-Per set, the judge counts 10 of 10 full at normal pace, 10 of 10 fast, 5 of 5 deep, 4 of 5 full in the mixed set with all 5 half refused, and 0 of 10 half reps: 39 of 40 full push-ups and 15 of 15 half reps refused. It gets the two full reps the line refused because their way up read 17 and 14.5 cm. It is trained on full and half only: a hand wave gives the same numbers as a push-up, so hand waves are tested but not trained on, and 8 of 10 still count. Its line, for an echo of average steadiness, is 14.6 cm of stroke.
-
-**Volume matters.** With the phone volume turned down the tones were 10 times weaker and a set of 10 read as noise. The receiver now refuses to count and says so when the tones are too quiet.
+**The app.** The iPhone screen (SwiftUI, `ios/UI/`) shows the count, a depth column, NO REP, the phone-moved and too-quiet warnings, a result screen with a personal best, and one line of advice after each set. That line is plain rules on the judge's verdicts, not a language model.
 
 ## Presenting it
 
-A slide outline for the 3 minute video or a deck. Every number below is from this README or `RESULTS.md`; nothing planned is said as done.
+A slide outline for the 3 minute video or a deck. The finished video: [youtube.com/watch?v=PdGd_M7TYp4](https://www.youtube.com/watch?v=PdGd_M7TYp4). Charts and a brief for the slides are in `presentation/`. Every number below is from this README or `RESULTS.md`; nothing planned is said as done.
 
 1. **Hook.** "There is no camera on. This phone is counting your push-ups with sound you cannot hear." Picture: `docs/app/set-light.png` next to the phone on the floor.
 2. **The problem.** Camera counters need you to film yourself. Motion counters count a shake as a rep. Both make you manage a screen while you train.
@@ -153,6 +156,10 @@ A slide outline for the 3 minute video or a deck. Every number below is from thi
 
 Honest limits to say out loud: one person, one phone, one afternoon; depth is good enough to sort full from half reps, not to quote in centimetres; with the phone volume turned down it fails, so it now refuses to count and says why.
 
+## Team
+
+Padraig, Ximo, Addy and George.
+
 ## Prior work
 
-Reuses ideas, not code, from my earlier PressPass project (camera push-up counter): the rep state machine design and the replay evaluation approach.
+Reuses ideas, not code, from Addy's earlier PressPass project (camera push-up counter): the rep state machine design and the replay evaluation approach.
